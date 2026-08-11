@@ -510,11 +510,61 @@
     return new Date(y, m-1, 1).toLocaleDateString('es-CO', {month:'long', year:'numeric'});
   }
 
+  const DB_NAME = 'finanzas-tracker-db';
+  const DB_STORE = 'kv';
+  const STORAGE_KEY = 'finance-data';
+  let idbHandle = null, idbTried = false;
+
+  function openIDB(){
+    return new Promise(resolve => {
+      if(idbTried){ resolve(idbHandle); return; }
+      idbTried = true;
+      if(!('indexedDB' in window)){ resolve(null); return; }
+      try{
+        const req = indexedDB.open(DB_NAME, 1);
+        req.onupgradeneeded = () => { req.result.createObjectStore(DB_STORE); };
+        req.onsuccess = () => { idbHandle = req.result; resolve(idbHandle); };
+        req.onerror = () => resolve(null);
+      }catch(e){ resolve(null); }
+    });
+  }
+  async function idbGet(key){
+    const db = await openIDB();
+    if(!db) return null;
+    return new Promise(resolve => {
+      try{
+        const tx = db.transaction(DB_STORE, 'readonly');
+        const req = tx.objectStore(DB_STORE).get(key);
+        req.onsuccess = () => resolve(req.result ?? null);
+        req.onerror = () => resolve(null);
+      }catch(e){ resolve(null); }
+    });
+  }
+  async function idbSet(key, value){
+    const db = await openIDB();
+    if(!db) return false;
+    return new Promise(resolve => {
+      try{
+        const tx = db.transaction(DB_STORE, 'readwrite');
+        tx.objectStore(DB_STORE).put(value, key);
+        tx.oncomplete = () => resolve(true);
+        tx.onerror = () => resolve(false);
+      }catch(e){ resolve(false); }
+    });
+  }
+
+  // Persistencia real para navegador: IndexedDB como almacenamiento principal
+  // y localStorage como respaldo automático (por si IndexedDB no está disponible,
+  // p. ej. en modo incógnito o navegadores antiguos).
   async function loadData(){
-    try{
-      const res = await window.storage.get('finance-data', false);
-      if(res && res.value) data = Object.assign(data, JSON.parse(res.value));
-    }catch(e){}
+    let raw = null;
+    try{ raw = await idbGet(STORAGE_KEY); }catch(e){}
+    if(!raw){
+      try{ raw = localStorage.getItem(STORAGE_KEY); }catch(e){}
+    }
+    if(raw){
+      try{ data = Object.assign(data, JSON.parse(raw)); }catch(e){}
+    }
     if(!data.accounts) data.accounts = [];
     if(!data.pockets) data.pockets = [];
     if(!data.transactions) data.transactions = [];
@@ -524,7 +574,9 @@
     if(!data.settings) data.settings = { reminderOn:false, reminderHour:20, lastNotified:null, lastReportMonth:null };
   }
   async function saveData(){
-    try{ await window.storage.set('finance-data', JSON.stringify(data), false); }catch(e){}
+    const json = JSON.stringify(data);
+    try{ await idbSet(STORAGE_KEY, json); }catch(e){}
+    try{ localStorage.setItem(STORAGE_KEY, json); }catch(e){}
   }
 
   function showToast(msg){
@@ -1102,9 +1154,29 @@ Inversiones: ${invLines}
 Dame el análisis según el formato indicado.`;
   }
 
+  // Genera un análisis local (sin IA) cuando no hay una API key configurada
+  // o la llamada a Anthropic falla (p. ej. en GitHub Pages sin backend propio).
+  function buildLocalFallbackReport(monthKey, stats){
+    const capacity = avgMonthlyCapacity();
+    const totalBalance = data.accounts.reduce((s,a)=>s+accountBalance(a),0);
+    const topCat = Object.entries(stats.byCategory).sort((a,b)=>b[1]-a[1])[0];
+    let html = '<h3>Diagnóstico del mes</h3>';
+    html += `<p>En ${monthLabel(monthKey)} tuviste ingresos de <b>${formatCOP(stats.income)}</b> y gastos de <b>${formatCOP(stats.expense)}</b>, con un balance de <b>${formatCOP(stats.balance)}</b> (tasa de ahorro del ${stats.savingsRate}%).</p>`;
+    if(topCat) html += `<p>Tu categoría de mayor gasto fue <b>${topCat[0]}</b> con ${formatCOP(topCat[1])}.</p>`;
+    html += '<h3>Recomendaciones</h3><ul>';
+    if(stats.savingsRate < 10) html += '<li>Tu tasa de ahorro está baja; intenta apartar al menos un 10-20% de tus ingresos apenas los recibas.</li>';
+    else html += '<li>Buena tasa de ahorro este mes — mantenla si puedes.</li>';
+    if(topCat) html += `<li>Revisa si hay margen para recortar gasto en <b>${topCat[0]}</b>.</li>`;
+    if(capacity!==null) html += `<li>Con tu capacidad de ahorro promedio (${formatCOP(capacity)}/mes) puedes ajustar el aporte mensual a tus metas.</li>`;
+    if(totalBalance<=0) html += '<li>Tu saldo consolidado está en cero o negativo; prioriza cubrir gastos esenciales antes de nuevos compromisos.</li>';
+    html += '</ul><p style="font-size:12px;color:var(--muted)">Análisis generado localmente en tu dispositivo (sin IA) — no reemplaza asesoría financiera profesional.</p>';
+    return html;
+  }
+
   async function requestAiAnalysis(report){
+    const stats = { income: report.income, expense: report.expense, balance: report.balance, savingsRate: report.savingsRate, byCategory: report.byCategory };
+    let text = null;
     try{
-      const stats = { income: report.income, expense: report.expense, balance: report.balance, savingsRate: report.savingsRate, byCategory: report.byCategory };
       const userPrompt = buildReportPrompt(report.monthKey, stats);
       const response = await fetch('https://api.anthropic.com/v1/messages', {
         method:'POST',
@@ -1118,13 +1190,17 @@ Dame el análisis según el formato indicado.`;
       });
       const respData = await response.json();
       const textBlocks = (respData.content||[]).filter(b=>b.type==='text').map(b=>b.text);
-      const text = textBlocks.join('\n');
-      if(text){
-        report.aiText = text;
-        report.aiDate = toKey(new Date());
-        await saveData();
-      }
+      text = textBlocks.join('\n');
     }catch(e){}
+    if(text){
+      report.aiText = text;
+      report.aiHtml = null;
+    } else {
+      report.aiText = null;
+      report.aiHtml = buildLocalFallbackReport(report.monthKey, stats);
+    }
+    report.aiDate = toKey(new Date());
+    await saveData();
   }
 
   async function generateReport(monthKey, withAi){
@@ -1182,7 +1258,9 @@ Dame el análisis según el formato indicado.`;
     listEl.innerHTML = sorted.map(r=>{
       const aiHtml = r.aiText
         ? `<div class="ai-box"><div class="ai-meta">Análisis generado ${r.aiDate||''}</div>${simpleMarkdown(r.aiText)}</div>`
-        : `<button class="btn-ghost report-ai-btn" data-month="${r.monthKey}" style="width:100%; margin-top:4px;">✨ Pedir recomendaciones IA</button>`;
+        : (r.aiHtml
+          ? `<div class="ai-box"><div class="ai-meta">Análisis generado ${r.aiDate||''}</div>${r.aiHtml}</div>`
+          : `<button class="btn-ghost report-ai-btn" data-month="${r.monthKey}" style="width:100%; margin-top:4px;">✨ Pedir recomendaciones IA</button>`);
       return `<div class="report-card">
         <div class="report-top"><span class="name">${monthLabel(r.monthKey)}</span><span class="rate">${r.savingsRate}% ahorro</span></div>
         <div class="report-stats">

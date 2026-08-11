@@ -1,23 +1,17 @@
 {
-  "id": "./",
   "name": "Finanzas Tracker",
   "short_name": "Finanzas",
   "description": "Control personal de cuentas, gastos, bolsillos, metas de ahorro y CDT.",
+  "id": "./",
   "start_url": "./",
   "scope": "./",
   "display": "standalone",
-  "display_override": [
-    "window-controls-overlay",
-    "standalone"
-  ],
+  "display_override": ["window-controls-overlay", "standalone"],
   "orientation": "portrait-primary",
-  "background_color": "#0f172a",
-  "theme_color": "#0f172a",
+  "background_color": "#12161A",
+  "theme_color": "#12161A",
   "lang": "es-CO",
-  "categories": [
-    "finance",
-    "productivity"
-  ],
+  "categories": ["finance", "productivity"],
   "icons": [
     {
       "src": "./icons/icon-192.png",
@@ -37,23 +31,13 @@
       "name": "Metas de ahorro",
       "short_name": "Metas",
       "url": "./#goals",
-      "icons": [
-        {
-          "src": "./icons/icon-192.png",
-          "sizes": "192x192"
-        }
-      ]
+      "icons": [{ "src": "./icons/icon-192.png", "sizes": "192x192" }]
     },
     {
       "name": "Bolsillos",
       "short_name": "Bolsillos",
       "url": "./#pockets",
-      "icons": [
-        {
-          "src": "./icons/icon-192.png",
-          "sizes": "192x192"
-        }
-      ]
+      "icons": [{ "src": "./icons/icon-192.png", "sizes": "192x192" }]
     }
   ]
 }
