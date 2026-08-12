@@ -118,6 +118,24 @@
   .btn-row{display:flex; gap:10px;}
 
   .extra-toggle-row{display:flex; align-items:center; justify-content:space-between; padding:4px 0 10px;}
+
+  .modal-overlay{position:fixed; inset:0; background:rgba(0,0,0,0.6); display:none; align-items:flex-end; justify-content:center; z-index:200;}
+  .modal-overlay.show{display:flex;}
+  .modal-box{background:var(--surface); border:1px solid var(--border); border-radius:16px 16px 0 0; width:100%; max-width:480px; max-height:88vh; overflow-y:auto; padding:18px; padding-bottom:calc(18px + env(safe-area-inset-bottom));}
+  @media(min-width:520px){
+    .modal-overlay{align-items:center;}
+    .modal-box{border-radius:16px; max-height:80vh;}
+  }
+  .modal-header{display:flex; justify-content:space-between; align-items:center; margin-bottom:14px;}
+  .modal-header h3{margin:0; font-size:16px;}
+  .modal-close{background:none; border:none; color:var(--muted); font-size:20px; padding:2px 6px; line-height:1;}
+  .modal-field{margin-bottom:12px;}
+  .modal-field label{display:block; font-size:12px; color:var(--muted); margin-bottom:5px;}
+  .modal-actions{display:flex; gap:10px; margin-top:16px;}
+  .modal-actions button{flex:1;}
+  .edit-btn{background:none; border:none; color:var(--muted); font-size:11px; padding:2px 4px; flex-shrink:0;}
+  .edit-btn:hover{color:var(--bonus);}
+  .row-actions{display:flex; gap:8px; align-items:center; flex-shrink:0;}
   .extra-toggle-row span{font-size:12.5px; color:var(--muted); cursor:pointer;}
   .extra-fields{display:none; gap:8px; flex-direction:column; margin-top:2px; margin-bottom:10px;}
   .extra-fields.show{display:flex;}
@@ -166,9 +184,10 @@
   .goal-plan.unknown{background:var(--surface); color:var(--muted);}
   .goal-add-row{display:flex; gap:8px;}
   .goal-add-row input{flex:1;}
-  .goal-del{text-align:right; margin-top:8px;}
+  .goal-del{display:flex; justify-content:flex-end; gap:14px; margin-top:8px;}
   .goal-del button{color:var(--muted); background:none; border:none; font-size:11px;}
-  .goal-del button:hover{color:var(--warn);}
+  .goal-del .goal-del-btn:hover{color:var(--warn);}
+  .goal-del .goal-edit-btn:hover{color:var(--bonus);}
 
   .inv-card{background:var(--surface-2); border-radius:12px; padding:14px; margin-bottom:12px;}
   .inv-card:last-child{margin-bottom:0;}
@@ -180,9 +199,10 @@
   .inv-status.matured{background:rgba(57,208,255,0.15); color:var(--bonus);}
   .inv-grid{display:grid; grid-template-columns:1fr 1fr; gap:8px 14px; font-size:12px; color:var(--muted); margin-bottom:8px;}
   .inv-grid b{display:block; color:var(--text); font-family:'JetBrains Mono',monospace; font-weight:500; font-size:13px;}
-  .inv-del{text-align:right;}
+  .inv-del{display:flex; justify-content:flex-end; gap:14px;}
   .inv-del button{color:var(--muted); background:none; border:none; font-size:11px;}
-  .inv-del button:hover{color:var(--warn);}
+  .inv-del .inv-del-btn:hover{color:var(--warn);}
+  .inv-del .inv-edit-btn:hover{color:var(--bonus);}
 
   .report-card{background:var(--surface-2); border-radius:12px; padding:14px; margin-bottom:12px;}
   .report-card:last-child{margin-bottom:0;}
@@ -215,12 +235,6 @@
   .toast.show{opacity:1; transform:translateX(-50%) translateY(0);}
   footer{text-align:center; color:var(--muted); font-size:11px; padding:20px; line-height:1.6;}
 </style>
-
-  <meta name="mobile-web-app-capable" content="yes">
-  <meta name="apple-mobile-web-app-capable" content="yes">
-  <meta name="apple-mobile-web-app-status-bar-style" content="default">
-  <meta name="apple-mobile-web-app-title" content="Finanzas">
-  <meta name="theme-color" content="#0f172a">
 
 </head>
 <body>
@@ -645,6 +659,129 @@
     if(pocketFormShown) populatePocketAccountSelect();
   });
 
+  // ---- Edición genérica (cuentas, bolsillos, metas, CDT) ----
+  function escapeAttr(str){
+    return String(str==null?'':str).replace(/&/g,'&amp;').replace(/"/g,'&quot;').replace(/</g,'&lt;');
+  }
+  let editModalState = null;
+
+  function closeEditModal(){
+    editModalState = null;
+    document.getElementById('editModalOverlay').classList.remove('show');
+  }
+  document.getElementById('editModalCloseBtn').addEventListener('click', closeEditModal);
+  document.getElementById('editModalCancelBtn').addEventListener('click', closeEditModal);
+  document.getElementById('editModalOverlay').addEventListener('click', (e)=>{
+    if(e.target.id==='editModalOverlay') closeEditModal();
+  });
+
+  function openEditModal(type, id){
+    editModalState = { type, id };
+    const titleEl = document.getElementById('editModalTitle');
+    const fieldsEl = document.getElementById('editModalFields');
+
+    if(type==='account'){
+      const acc = data.accounts.find(a=>a.id===id); if(!acc) return;
+      titleEl.textContent = 'Editar cuenta';
+      const opts = ['Ahorros','Corriente','Efectivo','Digital'];
+      fieldsEl.innerHTML = `
+        <div class="modal-field"><label>Nombre</label><input type="text" id="editAccName" value="${escapeAttr(acc.name)}"></div>
+        <div class="modal-field"><label>Tipo</label><select id="editAccType">
+          ${opts.map(o=>`<option value="${o}" ${acc.type===o?'selected':''}>${o==='Digital'?'Billetera digital':o}</option>`).join('')}
+        </select></div>
+        <div class="modal-field"><label>Saldo inicial (COP)</label><input type="number" id="editAccBalance" value="${acc.startBalance||0}" min="0" step="1000"></div>`;
+
+    } else if(type==='pocket'){
+      const p = data.pockets.find(x=>x.id===id); if(!p) return;
+      titleEl.textContent = 'Editar bolsillo';
+      const accOptions = data.accounts.map(a=>`<option value="${a.id}" ${p.accountId===a.id?'selected':''}>${escapeAttr(a.name)}</option>`).join('');
+      fieldsEl.innerHTML = `
+        <div class="modal-field"><label>Nombre</label><input type="text" id="editPocketName" value="${escapeAttr(p.name)}"></div>
+        <div class="modal-field"><label>Cuenta asociada</label><select id="editPocketAccount"><option value="">Sin asociar</option>${accOptions}</select></div>
+        <div class="modal-field"><label>Saldo del bolsillo (COP)</label><input type="number" id="editPocketBalance" value="${pocketBalance(p)}" min="0" step="1000"></div>`;
+
+    } else if(type==='goal'){
+      const g = data.goals.find(x=>x.id===id); if(!g) return;
+      titleEl.textContent = 'Editar meta';
+      const pocketOpts = data.pockets.map(p=>`<label><input type="checkbox" class="edit-goal-pocket-check" value="${p.id}" ${(g.pocketIds||[]).includes(p.id)?'checked':''}> ${escapeAttr(p.name)} — ${formatCOP(pocketBalance(p))}</label>`).join('') || '<div class="empty" style="padding:4px 0;">No hay bolsillos creados.</div>';
+      const invOpts = data.investments.map(i=>`<label><input type="checkbox" class="edit-goal-investment-check" value="${i.id}" ${(g.investmentIds||[]).includes(i.id)?'checked':''}> ${escapeAttr(i.entity)} — ${formatCOP(i.amount)}</label>`).join('') || '<div class="empty" style="padding:4px 0;">No hay CDT registrados.</div>';
+      fieldsEl.innerHTML = `
+        <div class="modal-field"><label>Nombre</label><input type="text" id="editGoalName" value="${escapeAttr(g.name)}"></div>
+        <div class="modal-field"><label>Monto objetivo (COP)</label><input type="number" id="editGoalTarget" value="${g.target}" min="0" step="10000"></div>
+        <div class="modal-field"><label>Fecha objetivo</label><input type="date" id="editGoalDate" value="${g.targetDate||''}"></div>
+        <div class="modal-field goal-source-box">
+          <div class="goal-source-title">¿Qué dinero cuenta para esta meta?</div>
+          <label><input type="checkbox" id="editGoalIncludeContributions" ${g.includeContributions!==false?'checked':''}> Abonos manuales</label>
+          <div class="goal-source-subtitle">Bolsillos</div>
+          <div>${pocketOpts}</div>
+          <div class="goal-source-subtitle">CDT</div>
+          <div>${invOpts}</div>
+        </div>`;
+
+    } else if(type==='investment'){
+      const inv = data.investments.find(x=>x.id===id); if(!inv) return;
+      titleEl.textContent = 'Editar CDT';
+      fieldsEl.innerHTML = `
+        <div class="modal-field"><label>Entidad</label><input type="text" id="editInvEntity" value="${escapeAttr(inv.entity)}"></div>
+        <div class="modal-field"><label>Monto invertido (COP)</label><input type="number" id="editInvAmount" value="${inv.amount}" min="0" step="10000"></div>
+        <div class="modal-field"><label>Tasa EA (%)</label><input type="number" id="editInvRate" value="${inv.rate}" min="0" step="0.01"></div>
+        <div class="modal-field"><label>Plazo (días)</label><input type="number" id="editInvTerm" value="${inv.termDays}" min="1" step="1"></div>
+        <div class="modal-field"><label>Fecha de apertura</label><input type="date" id="editInvStart" value="${inv.startDate}"></div>`;
+    }
+
+    document.getElementById('editModalOverlay').classList.add('show');
+  }
+
+  async function saveEditModal(){
+    if(!editModalState) return;
+    const { type, id } = editModalState;
+
+    if(type==='account'){
+      const acc = data.accounts.find(a=>a.id===id); if(!acc) return;
+      const name = document.getElementById('editAccName').value.trim();
+      if(!name) return;
+      acc.name = name;
+      acc.type = document.getElementById('editAccType').value;
+      acc.startBalance = parseFloat(document.getElementById('editAccBalance').value) || 0;
+
+    } else if(type==='pocket'){
+      const p = data.pockets.find(x=>x.id===id); if(!p) return;
+      const name = document.getElementById('editPocketName').value.trim();
+      if(!name) return;
+      p.name = name;
+      p.accountId = document.getElementById('editPocketAccount').value || null;
+      p.balance = parseFloat(document.getElementById('editPocketBalance').value) || 0;
+
+    } else if(type==='goal'){
+      const g = data.goals.find(x=>x.id===id); if(!g) return;
+      const name = document.getElementById('editGoalName').value.trim();
+      const target = parseFloat(document.getElementById('editGoalTarget').value);
+      if(!name || !target || target<=0) return;
+      g.name = name;
+      g.target = target;
+      g.targetDate = document.getElementById('editGoalDate').value;
+      g.includeContributions = document.getElementById('editGoalIncludeContributions').checked;
+      g.pocketIds = Array.from(document.querySelectorAll('.edit-goal-pocket-check:checked')).map(el=>el.value);
+      g.investmentIds = Array.from(document.querySelectorAll('.edit-goal-investment-check:checked')).map(el=>el.value);
+
+    } else if(type==='investment'){
+      const inv = data.investments.find(x=>x.id===id); if(!inv) return;
+      const entity = document.getElementById('editInvEntity').value.trim();
+      const amount = parseFloat(document.getElementById('editInvAmount').value);
+      const rate = parseFloat(document.getElementById('editInvRate').value);
+      const termDays = parseInt(document.getElementById('editInvTerm').value);
+      const startDate = document.getElementById('editInvStart').value;
+      if(!entity || !amount || amount<=0 || !rate || rate<0 || !termDays || termDays<=0 || !startDate) return;
+      inv.entity = entity; inv.amount = amount; inv.rate = rate; inv.termDays = termDays; inv.startDate = startDate;
+    }
+
+    await saveData();
+    closeEditModal();
+    showToast('Cambios guardados');
+    renderAll();
+  }
+  document.getElementById('editModalSaveBtn').addEventListener('click', saveEditModal);
+
   // ---- Cuentas ----
   function accountBalance(acc){
     const delta = data.transactions.filter(t=>t.accountId===acc.id)
@@ -661,9 +798,17 @@
         return `<div class="acc-row" data-acc="${a.id}">
           <div class="info"><div class="name">${a.name}</div><div class="meta">${a.type}</div></div>
           <div class="bal">${formatCOP(bal)}</div>
-          <button class="acc-del-btn">borrar</button>
+          <div class="row-actions">
+            <button class="edit-btn acc-edit-btn">editar</button>
+            <button class="acc-del-btn">borrar</button>
+          </div>
         </div>`;
       }).join('');
+      listEl.querySelectorAll('.acc-edit-btn').forEach(btn=>{
+        btn.addEventListener('click', ()=>{
+          openEditModal('account', btn.closest('.acc-row').dataset.acc);
+        });
+      });
       listEl.querySelectorAll('.acc-del-btn').forEach(btn=>{
         btn.addEventListener('click', async ()=>{
           const id = btn.closest('.acc-row').dataset.acc;
@@ -810,9 +955,17 @@
         return `<div class="pocket-row" data-pocket="${p.id}">
           <div class="info"><div class="name">▣ ${p.name}</div><div class="meta">${acc ? acc.name : 'Cuenta no asociada'}</div></div>
           <div class="bal">${formatCOP(pocketBalance(p))}</div>
-          <button class="pocket-del-btn">borrar</button>
+          <div class="row-actions">
+            <button class="edit-btn pocket-edit-btn">editar</button>
+            <button class="pocket-del-btn">borrar</button>
+          </div>
         </div>`;
       }).join('');
+      listEl.querySelectorAll('.pocket-edit-btn').forEach(btn=>{
+        btn.addEventListener('click', ()=>{
+          openEditModal('pocket', btn.closest('.pocket-row').dataset.pocket);
+        });
+      });
       listEl.querySelectorAll('.pocket-del-btn').forEach(btn=>{
         btn.addEventListener('click', async ()=>{
           const id = btn.closest('.pocket-row').dataset.pocket;
@@ -996,11 +1149,14 @@
           <input type="number" min="0" step="10000" placeholder="Abonar monto" class="goal-contrib-input">
           <button class="btn-accent goal-contrib-btn">Abonar</button>
         </div>
-        <div class="goal-del"><button class="goal-del-btn">eliminar meta</button></div>
+        <div class="goal-del"><button class="edit-btn goal-edit-btn">editar meta</button><button class="goal-del-btn">eliminar meta</button></div>
       </div>`;
     }).join('');
     listEl.querySelectorAll('.goal-card').forEach(card=>{
       const id = card.dataset.goal;
+      card.querySelector('.goal-edit-btn').addEventListener('click', ()=>{
+        openEditModal('goal', id);
+      });
       card.querySelector('.goal-contrib-btn').addEventListener('click', async ()=>{
         const input = card.querySelector('.goal-contrib-input');
         const val = parseFloat(input.value);
@@ -1065,11 +1221,14 @@
           <div>${matured?'Venció hace':'Días restantes'}<b>${Math.abs(daysLeft)}</b></div>
           <div style="grid-column:1/-1;">Valor proyectado al vencimiento<b>${formatCOP(projected)}</b></div>
         </div>
-        <div class="inv-del"><button class="inv-del-btn">eliminar</button></div>
+        <div class="inv-del"><button class="edit-btn inv-edit-btn">editar</button><button class="inv-del-btn">eliminar</button></div>
       </div>`;
     }).join('');
     listEl.querySelectorAll('.inv-card').forEach(card=>{
       const id = card.dataset.inv;
+      card.querySelector('.inv-edit-btn').addEventListener('click', ()=>{
+        openEditModal('investment', id);
+      });
       card.querySelector('.inv-del-btn').addEventListener('click', async ()=>{
         data.investments = data.investments.filter(i=>i.id!==id);
         await saveData(); renderAll();
@@ -1417,6 +1576,19 @@ if ('serviceWorker' in navigator) {
   });
 }
 </script>
+  <div class="modal-overlay" id="editModalOverlay">
+    <div class="modal-box">
+      <div class="modal-header">
+        <h3 id="editModalTitle">Editar</h3>
+        <button class="modal-close" id="editModalCloseBtn">✕</button>
+      </div>
+      <div id="editModalFields"></div>
+      <div class="modal-actions">
+        <button class="btn-ghost" id="editModalCancelBtn">Cancelar</button>
+        <button class="btn-accent" id="editModalSaveBtn">Guardar cambios</button>
+      </div>
+    </div>
+  </div>
 
 </body>
 </html>
