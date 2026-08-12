@@ -488,6 +488,20 @@
 
 </main>
 
+<div class="modal-overlay" id="editModalOverlay">
+  <div class="modal-box">
+    <div class="modal-header">
+      <h3 id="editModalTitle">Editar</h3>
+      <button class="modal-close" id="editModalCloseBtn">✕</button>
+    </div>
+    <div id="editModalFields"></div>
+    <div class="modal-actions">
+      <button class="btn-ghost" id="editModalCancelBtn">Cancelar</button>
+      <button class="btn-accent" id="editModalSaveBtn">Guardar cambios</button>
+    </div>
+  </div>
+</div>
+
 <div class="toast" id="toast"></div>
 <footer>Tus datos se guardan solo en esta app.</footer>
 
@@ -1576,19 +1590,6 @@ if ('serviceWorker' in navigator) {
   });
 }
 </script>
-  <div class="modal-overlay" id="editModalOverlay">
-    <div class="modal-box">
-      <div class="modal-header">
-        <h3 id="editModalTitle">Editar</h3>
-        <button class="modal-close" id="editModalCloseBtn">✕</button>
-      </div>
-      <div id="editModalFields"></div>
-      <div class="modal-actions">
-        <button class="btn-ghost" id="editModalCancelBtn">Cancelar</button>
-        <button class="btn-accent" id="editModalSaveBtn">Guardar cambios</button>
-      </div>
-    </div>
-  </div>
 
 </body>
 </html>
